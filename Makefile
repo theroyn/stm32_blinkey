@@ -2,21 +2,36 @@ CC      = arm-none-eabi-gcc
 CXX     = arm-none-eabi-g++
 CFLAGS  = -mcpu=cortex-m4 -mthumb -mfloat-abi=soft -ffreestanding -Og -g3 -Wall -Wextra
 CXXFLAGS = $(CFLAGS) -fno-exceptions -fno-rtti
-LDFLAGS = -mcpu=cortex-m4 -mthumb -mfloat-abi=soft -nostartfiles -T linker_script.ld -specs=nano.specs -Wl,-Map=firmware.map
+BUILD_DIR := build
+LDFLAGS = -mcpu=cortex-m4 -mthumb -mfloat-abi=soft -nostartfiles -T linker_script.ld -specs=nano.specs -Wl,-Map=$(BUILD_DIR)/firmware.map
 
-all: firmware.elf
+# 2. Source and Object File Tracking
+SRCS_C   := $(wildcard *.c)
+SRCS_CPP := $(wildcard *.cpp)
 
-startup.o: startup.c
-	$(CC) -c startup.c -o startup.o $(CFLAGS)
+# Generate obj/*.o paths for BOTH types using the shorthand substitution
+OBJS     := $(SRCS_C:%.c=$(BUILD_DIR)/%.o) $(SRCS_CPP:%.cpp=$(BUILD_DIR)/%.o)
 
-main.o: main.cpp
-	$(CXX) -c main.cpp -o main.o $(CXXFLAGS)
+# Main target
+all: $(BUILD_DIR)/firmware.elf
 
-.PHONY: all clean
+# linking rule
+$(BUILD_DIR)/firmware.elf: $(OBJS)
+	$(CXX) $^ -o $(BUILD_DIR)/firmware.elf $(LDFLAGS)
 
-firmware.elf: startup.o main.o
-	$(CXX) startup.o main.o -o firmware.elf $(LDFLAGS)
+# Compilation Rule for C files
+$(BUILD_DIR)/%.o: %.c | $(BUILD_DIR)
+	$(CC) -c $< -o $@ $(CFLAGS)
 
+# Compilation Rule for C++ files
+$(BUILD_DIR)/%.o: %.cpp | $(BUILD_DIR)
+	$(CXX) -c $< -o $@ $(CXXFLAGS)
+
+# Rule to create the directory if it does not exist
+$(BUILD_DIR):
+	mkdir -p $@
 
 clean:
-	rm -f *.o firmware.elf firmware.map
+	rm -rf $(BUILD_DIR)
+
+.PHONY: all clean
