@@ -10,18 +10,23 @@ MEMORY
 
 SECTIONS
 {
-    .isr_vector:
+    .isr_vector :
     {
         . = ALIGN(4);
         KEEP(*(.isr_vector))
     } >FLASH
 
-    .text:
+    .text :
     {
         . = ALIGN(4);
-        *(.text*) *(.rodata*)
+        *(.text) *(.text*)
+        *(.rodata) *(.rodata*)
         . = ALIGN(4);
-        _init_array_start = .;
+        __preinit_array_start = .;
+        KEEP(*(.preinit_array))
+        __preinit_array_end = .;
+        . = ALIGN(4);
+        __init_array_start = .;
         KEEP(*(SORT(.init_array.*)))
         KEEP(*(.init_array))
         __init_array_end = .;
@@ -30,7 +35,7 @@ SECTIONS
 
     _siData = LOADADDR(.data);
 
-    .data
+    .data :
     {
         . = ALIGN(4); /* unneeded because there was one at end of .text?*/
         _sData = .;
@@ -39,7 +44,7 @@ SECTIONS
         _eData = .;
     }>RAM AT>FLASH
 
-    .bss
+    .bss :
     {
         . = ALIGN(4);
         _sbData = .;

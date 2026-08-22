@@ -49,6 +49,8 @@ void DefaultHandler()
     for (;;);
 }
 
+void _init(){}
+
 void reset_handler()
 {
     {
