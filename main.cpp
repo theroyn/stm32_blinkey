@@ -22,7 +22,7 @@ int main()
 {
     *iAHB1ENR |= 0b100;
     *iModer |= 0x4000000;
-    for(int cnt=0;;++cnt)
+    for(unsigned int cnt=0;;++cnt)
     {
         if((cnt/50000) % 2 == 0)
             *iODR |= 0x2000;
