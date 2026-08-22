@@ -37,7 +37,7 @@ SECTIONS
 
     .data :
     {
-        . = ALIGN(4); /* unneeded because there was one at end of .text?*/
+        . = ALIGN(4);
         _sData = .;
         *(.data*)
         . = ALIGN(4);
@@ -52,4 +52,10 @@ SECTIONS
         . = ALIGN(4);
         _ebData = .;
     }>RAM
+
+    /*
+    * unlike in many templates, I do not discard as it's harmless data on
+    * the .elf that can be used to debug fuckups in the future
+    */
+   /* /DISCARD/ : { *(.ARM.attributes) } */
 }
