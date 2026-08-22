@@ -1,7 +1,7 @@
 CC      = arm-none-eabi-gcc
 CXX     = arm-none-eabi-g++
 CFLAGS  = -mcpu=cortex-m4 -mthumb -mfloat-abi=soft -ffreestanding -Og -g3 -Wall -Wextra
-CXXFLAGS = $(CFLAGS) -fno-exceptions -fno-rtti
+CXXFLAGS = $(CFLAGS) -fno-exceptions -fno-rtti -std=c++20
 BUILD_DIR := build
 LDFLAGS = -mcpu=cortex-m4 -mthumb -mfloat-abi=soft -nostartfiles -T linker_script.ld -specs=nano.specs -Wl,-Map=$(BUILD_DIR)/firmware.map
 
