@@ -21,10 +21,10 @@ volatile int* iODR = (int*)((uintptr_t)iGPIOC + 0x14);
 int main()
 {
     *iAHB1ENR |= 0b100;
-    *iModer |= 0x4000000;
+    *iModer = (*iModer & ~0xc000000) | 0x4000000; // zero-out the 2-bit mask and set bit 26
     for(unsigned int cnt=0;;++cnt)
     {
-        if((cnt/50000) % 2 == 0)
+        if((cnt/500000) % 2 == 0)
             *iODR |= 0x2000;
         else
             *iODR &= ~0x2000;
