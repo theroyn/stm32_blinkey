@@ -6,6 +6,11 @@
 static constexpr uintptr_t iRCC = 0x40023800;
 static constexpr uintptr_t iI2C1 = 0x40005400;
 static constexpr uintptr_t iI2C1_CR1 = iI2C1 + 0x00;
+static constexpr uintptr_t bitI2C1_CR1_START = BIT(8);
+static constexpr uintptr_t bitI2C1_CR1_STOP = BIT(9);
+static constexpr uintptr_t iI2C1_DR = iI2C1 + 0x10;
+static constexpr uintptr_t iI2C1_SR1 = iI2C1 + 0x14;
+static constexpr uintptr_t iI2C1_SR2 = iI2C1 + 0x18;
 
 uint32_t GetClockFreq()
 {
@@ -177,6 +182,121 @@ bool peripheral_conf()
     return true;
 }
 
+bool wait_ack()
+{
+    bool bAck = false;
+    bool bNack = false;
+    while (!bAck && !bNack)
+    {
+        if ((DEREF_ADDRESS(iI2C1_SR1) & BIT(1)) != 0)
+        {
+            // received address matched
+            bAck = true;
+        }
+        else if((DEREF_ADDRESS(iI2C1_SR1) & BIT(10)) != 0)
+        {
+            // ack failed
+            bNack = true;
+        }
+    }
+
+    return bAck;
+}
+
+bool wait_txe()
+{
+    bool bAck = false;
+    bool bNack = false;
+    while (!bAck && !bNack)
+    {
+        if ((DEREF_ADDRESS(iI2C1_SR1) & BIT(7)) != 0)
+        {
+            // received address matched
+            bAck = true;
+        }
+        else if((DEREF_ADDRESS(iI2C1_SR1) & BIT(10)) != 0)
+        {
+            // ack failed
+            bNack = true;
+        }
+    }
+
+    return bAck;
+}
+
+void handle_ack()
+{
+        (void)DEREF_ADDRESS(iI2C1_SR1); // needs to read SR1 first
+        (void)DEREF_ADDRESS(iI2C1_SR2); // needs to read SR2
+}
+
+void handle_nack()
+{
+    // stop
+    DEREF_ADDRESS(iI2C1_CR1) |= bitI2C1_CR1_STOP;
+    // clear AF bit
+    DEREF_ADDRESS(iI2C1_SR1) &= ~BIT(10);
+}
+
+bool send(uint8_t iControl, uint8_t* pData, uint32_t nData, uint32_t nRepeat = 1)
+{
+    // wait for SR2 BUSY bit to clear from last STOP
+    while((DEREF_ADDRESS(iI2C1_SR2) & BIT(1)) != 0) { }
+
+    // start
+    DEREF_ADDRESS(iI2C1_CR1) |= bitI2C1_CR1_START;
+
+    // poll until interface became master(SB flipped to 1)
+    while((DEREF_ADDRESS(iI2C1_SR1) & BIT(0)) == 0) { }
+
+    // send address
+    DEREF_ADDRESS(iI2C1_DR) = (0x3c << 1) | 0; // 0x3c SSD1306 oled's address.
+
+    bool bAck = wait_ack();
+
+    if(!bAck)
+    {
+        handle_nack();
+        return false;
+    }
+
+    handle_ack();
+
+    DEREF_ADDRESS(iI2C1_DR) = iControl;
+
+    bAck = wait_txe();
+
+    if(!bAck)
+    {
+        handle_nack();
+        return false;
+    }
+
+    for(uint32_t iRepeat = 0; iRepeat < nRepeat; ++iRepeat)
+    {
+        for(uint32_t iDatum = 0; iDatum < nData; ++iDatum)
+        {
+            DEREF_ADDRESS(iI2C1_DR) = pData[iDatum];
+
+            bAck = wait_txe();
+
+            if(!bAck)
+            {
+                handle_nack();
+                return false;
+            }
+        }
+    }
+
+    // poll for BTF
+    while((DEREF_ADDRESS(iI2C1_SR1) & BIT(2)) == 0) { }
+
+    // stop
+    DEREF_ADDRESS(iI2C1_CR1) |= bitI2C1_CR1_STOP;
+
+    return true;
+}
+
 void run_oled()
 {
     //////////////////////////// clock-gates //////////////////////////////////
@@ -194,11 +314,6 @@ void run_oled()
         return;
     
     //////////////////////////// first ACK //////////////////////////////////
-    static constexpr uintptr_t iI2C1_DR = iI2C1 + 0x10;
-    static constexpr uintptr_t iI2C1_SR1 = iI2C1 + 0x14;
-    static constexpr uintptr_t iI2C1_SR2 = iI2C1 + 0x18;
-    static constexpr uintptr_t bitI2C1_CR1_START = BIT(8);
-    static constexpr uintptr_t bitI2C1_CR1_STOP = BIT(9);
     
     // start
     DEREF_ADDRESS(iI2C1_CR1) |= bitI2C1_CR1_START;
@@ -208,36 +323,77 @@ void run_oled()
     // send address
     DEREF_ADDRESS(iI2C1_DR) = (0x3c << 1) | 0; // 0x3c SSD1306 oled's address.
 
-    bool bAck = false;
-    bool bNack = false;
-    while (!bAck && !bNack)
-    {
-        if ((DEREF_ADDRESS(iI2C1_SR1) & BIT(1)) != 0)
-        {
-            // received address matched
-            bAck = true;
-        }
-        else if((DEREF_ADDRESS(iI2C1_SR1) & BIT(10)) != 0)
-        {
-            // ack failed
-            bNack = true;
-        }
-    }
+    bool bAck = wait_ack();
 
     if(bAck)
     {
-        // also needs to read SR1 but I did so earlier
-        (void)DEREF_ADDRESS(iI2C1_SR2); // needs to read SR2
+        handle_ack();
         // stop
         DEREF_ADDRESS(iI2C1_CR1) |= bitI2C1_CR1_STOP;
     }
     else
     {
-        // stop
-        DEREF_ADDRESS(iI2C1_CR1) |= bitI2C1_CR1_STOP;
-        // clear AF bit
-        DEREF_ADDRESS(iI2C1_SR1) &= ~BIT(10);
+        handle_nack();
+
+        return;
     }
-    // wait for SR2 BUSY bit to clear
-    while((DEREF_ADDRESS(iI2C1_SR2) & BIT(1)) != 0) { }
+
+    /*
+    0xAE        display OFF
+    0xD5 0x80   clock divide / osc freq
+    0xA8 0x3F   multiplex ratio = 63 (64 rows)
+    0xD3 0x00   display offset = 0
+    0x40        start line = 0
+    0x8D 0x14   charge pump ON      ← CRITICAL
+    0x20 0x00   addressing mode = horizontal
+    0xA1        segment remap
+    0xC8        COM scan direction remapped
+
+    0xDA 0x12   COM pins config
+    0x81 0x7F   contrast
+    0xD9 0xF1   pre-charge
+    0xDB 0x40   VCOMH deselect
+
+    0xA4        output follows RAM
+    0xA6        normal (non-inverted)
+    0xAF        display ON
+    */
+    uint8_t arrCommands[256] = {0};
+    arrCommands[0] = 0xae; // iDisplayOff
+    if(!send(0x00, arrCommands, 1)) return;
+    arrCommands[0] = 0xd5; arrCommands[1] = 0x80; // clock divide / osc freq
+    if(!send(0x00, arrCommands, 2)) return;
+    arrCommands[0] = 0xA8; arrCommands[1] = 0x3F; // multiplex ratio = 63 (64 rows)
+    if(!send(0x00, arrCommands, 2)) return;
+    arrCommands[0] = 0xD3; arrCommands[1] = 0x00; // display offset = 0
+    if(!send(0x00, arrCommands, 2)) return;
+    arrCommands[0] = 0x40; // start line = 0
+    if(!send(0x00, arrCommands, 1)) return;
+    arrCommands[0] = 0x8D; arrCommands[1] = 0x14; // charge pump ON
+    if(!send(0x00, arrCommands, 2)) return;
+    arrCommands[0] = 0x20; arrCommands[1] = 0x00; // addressing mode = horizontal
+    if(!send(0x00, arrCommands, 2)) return;
+    arrCommands[0] = 0xA1; // segment remap
+    if(!send(0x00, arrCommands, 1)) return;
+    arrCommands[0] = 0xC8; // COM scan direction remapped
+    if(!send(0x00, arrCommands, 1)) return;
+    arrCommands[0] = 0xDA; arrCommands[1] = 0x12; // COM pins config
+    if(!send(0x00, arrCommands, 2)) return;
+    arrCommands[0] = 0x81; arrCommands[1] = 0x7F; // contrast
+    if(!send(0x00, arrCommands, 2)) return;
+    arrCommands[0] = 0xD9; arrCommands[1] = 0xF1; // pre-charge
+    if(!send(0x00, arrCommands, 2)) return;
+    arrCommands[0] = 0xDB; arrCommands[1] = 0x40; // VCOMH deselect
+    if(!send(0x00, arrCommands, 2)) return;
+    arrCommands[0] = 0xA4; // output follows RAM
+    if(!send(0x00, arrCommands, 1)) return;
+    arrCommands[0] = 0xA6; // normal (non-inverted)
+    if(!send(0x00, arrCommands, 1)) return;
+    arrCommands[0] = 0xAF; // display ON
+    if(!send(0x00, arrCommands, 1)) return;
+    arrCommands[0] = 0x00; // all pixels off
+    if(!send(0x40, arrCommands, 1, 1024)) return;
+    arrCommands[0] = 0xff; // all pixels on
+    if(!send(0x40, arrCommands, 1, 1024)) return;
+    
 }
