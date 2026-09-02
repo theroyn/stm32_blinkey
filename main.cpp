@@ -3,7 +3,7 @@
 
 int main()
 {
-    run_blinky();
+    run_oled();
 
     return 0;
 }
