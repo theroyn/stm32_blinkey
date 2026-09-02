@@ -4,6 +4,8 @@
 #include <cstdint> // for types like uintptr_t and uint32_t
 
 static constexpr uintptr_t iRCC = 0x40023800;
+static constexpr uintptr_t iI2C1 = 0x40005400;
+static constexpr uintptr_t iI2C1_CR1 = iI2C1 + 0x00;
 
 uint32_t GetClockFreq()
 {
@@ -94,14 +96,8 @@ uint32_t GetClockFreq()
     return sysclk;
 }
 
-void run_oled()
+bool init_clock()
 {
-
-    //////////////////////////// clock-gates //////////////////////////////////
-    /// the clock enabling must happen before the GPIO registers mods, since
-    /// with the clocks off the register writes will be silently dropped.
-
-
     // I2C1 is on APB1 in bit 21
     static constexpr uintptr_t iAPB1ENR = iRCC + 0x40;
     DEREF_ADDRESS(iAPB1ENR) |=  BIT(21);
@@ -116,7 +112,11 @@ void run_oled()
     (void)DEREF_ADDRESS(iAPB1ENR);
     (void)DEREF_ADDRESS(iAHB1ENR);
 
-    //////////////////////////// GPIO //////////////////////////////////
+    return true;
+}
+
+bool init_gpio()
+{
     static constexpr uintptr_t iGPIOB = 0x40020400;
     
     static constexpr uintptr_t iGPIOB_MODER = iGPIOB + 0x00;
@@ -147,22 +147,17 @@ void run_oled()
     DEREF_ADDRESS(iGPIOB_AFRL) &= iPB7_4bit_MASK;
     DEREF_ADDRESS(iGPIOB_AFRL) |= BIT(26);
     DEREF_ADDRESS(iGPIOB_AFRL) |= BIT(30);
-    
-    
-    //////////////////////////// peripheral config //////////////////////////////////
-    
-    static constexpr uintptr_t iI2C1 = 0x40005400;
-    static constexpr uintptr_t iI2C1_CR1 = iI2C1 + 0x00;
+
+    return true;
+}
+
+bool peripheral_conf()
+{
     static constexpr uintptr_t iI2C1_CR2 = iI2C1 + 0x04;
-    static constexpr uintptr_t iI2C1_DR = iI2C1 + 0x10;
-    static constexpr uintptr_t iI2C1_SR1 = iI2C1 + 0x14;
-    static constexpr uintptr_t iI2C1_SR2 = iI2C1 + 0x18;
     static constexpr uintptr_t iI2C1_CCR = iI2C1 + 0x1c;
     static constexpr uintptr_t iI2C1_TRISE = iI2C1 + 0x20;
     
     static constexpr uintptr_t bitI2C1_CR1_PE = BIT(0);
-    static constexpr uintptr_t bitI2C1_CR1_START = BIT(8);
-    static constexpr uintptr_t bitI2C1_CR1_STOP = BIT(9);
 
     // FREQ
     uint32_t iFreqMHz = GetClockFreq();
@@ -178,8 +173,32 @@ void run_oled()
     DEREF_ADDRESS(iI2C1_TRISE) = (DEREF_ADDRESS(iI2C1_TRISE) & (~0b111111)) | (iTRISE & 0b111111); // 6 bits
     // should be last in the config as it will cause the others to lock
     DEREF_ADDRESS(iI2C1_CR1) |= bitI2C1_CR1_PE;
+
+    return true;
+}
+
+void run_oled()
+{
+    //////////////////////////// clock-gates //////////////////////////////////
+    /// the clock enabling must happen before the GPIO registers mods, since
+    /// with the clocks off the register writes will be silently dropped.
+    if(!init_clock())
+        return;
+
+    //////////////////////////// GPIO //////////////////////////////////
+    if(!init_gpio())
+        return;
+    
+    //////////////////////////// peripheral config //////////////////////////////////
+    if(!peripheral_conf())
+        return;
     
     //////////////////////////// first ACK //////////////////////////////////
+    static constexpr uintptr_t iI2C1_DR = iI2C1 + 0x10;
+    static constexpr uintptr_t iI2C1_SR1 = iI2C1 + 0x14;
+    static constexpr uintptr_t iI2C1_SR2 = iI2C1 + 0x18;
+    static constexpr uintptr_t bitI2C1_CR1_START = BIT(8);
+    static constexpr uintptr_t bitI2C1_CR1_STOP = BIT(9);
     
     // start
     DEREF_ADDRESS(iI2C1_CR1) |= bitI2C1_CR1_START;
